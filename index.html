@@ -14,6 +14,24 @@
             <p class="text-gray-600">Questions automatically loaded from Google Sheets</p>
         </div>
 
+        <!-- Quiz Mode Selection -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Quiz Mode</h3>
+            <div class="flex justify-center space-x-4">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="radio" name="quizMode" value="multiple-choice" checked class="text-indigo-600">
+                    <span class="text-gray-700">Multiple Choice</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="radio" name="quizMode" value="identification" class="text-indigo-600">
+                    <span class="text-gray-700">Identification</span>
+                </label>
+            </div>
+            <p class="text-sm text-gray-500 text-center mt-2">
+                <span id="modeDescription">Select from 4 options</span>
+            </p>
+        </div>
+
         <!-- Loading Status -->
         <div class="bg-white rounded-lg shadow-lg p-6 mb-6 text-center">
             <div id="loadStatus" class="text-lg">
@@ -63,9 +81,27 @@
                 <div class="mb-6">
                     <h2 id="questionText" class="text-xl font-semibold text-gray-800 mb-6"></h2>
                     <div id="answersContainer" class="space-y-3"></div>
+                    
+                    <!-- Identification Input -->
+                    <div id="identificationInput" class="hidden">
+                        <input type="text" id="answerInput" placeholder="Type your answer here..." 
+                               class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 text-lg">
+                        <button id="submitAnswer" class="mt-3 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
+                            Submit Answer
+                        </button>
+                    </div>
+                    
+                    <!-- Answer Feedback -->
+                    <div id="answerFeedback" class="hidden mt-4 p-4 rounded-lg">
+                        <div class="flex items-center space-x-2">
+                            <div id="feedbackIcon"></div>
+                            <div id="feedbackText" class="font-semibold"></div>
+                        </div>
+                        <div id="correctAnswer" class="mt-2 text-sm"></div>
+                    </div>
                 </div>
                 <div class="flex justify-between items-center">
-                    <div class="text-sm text-gray-500">
+                    <div class="text-sm text-gray-500" id="instructionText">
                         Select an answer to continue
                     </div>
                     <button id="nextBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -119,6 +155,41 @@
         let startTime = null;
         let timerInterval = null;
         let selectedAnswer = null;
+        let currentQuizMode = 'multiple-choice';
+        let answerSubmitted = false;
+
+        // Sound effects using Web Audio API
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(frequency, duration, type = 'sine') {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = type;
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+        
+        function playCorrectSound() {
+            // Happy ascending notes
+            playSound(523, 0.2); // C
+            setTimeout(() => playSound(659, 0.2), 100); // E
+            setTimeout(() => playSound(784, 0.3), 200); // G
+        }
+        
+        function playIncorrectSound() {
+            // Descending sad notes
+            playSound(400, 0.3, 'sawtooth');
+            setTimeout(() => playSound(300, 0.4, 'sawtooth'), 150);
+        }
 
         // DOM elements
         const loadStatus = document.getElementById('loadStatus');
@@ -135,15 +206,32 @@
         const totalQuestions = document.getElementById('totalQuestions');
         const questionText = document.getElementById('questionText');
         const answersContainer = document.getElementById('answersContainer');
+        const identificationInput = document.getElementById('identificationInput');
+        const answerInput = document.getElementById('answerInput');
+        const submitAnswer = document.getElementById('submitAnswer');
+        const answerFeedback = document.getElementById('answerFeedback');
+        const feedbackIcon = document.getElementById('feedbackIcon');
+        const feedbackText = document.getElementById('feedbackText');
+        const correctAnswer = document.getElementById('correctAnswer');
+        const instructionText = document.getElementById('instructionText');
+        const modeDescription = document.getElementById('modeDescription');
 
         // Load questions from Google Apps Script
         async function loadQuestionsFromScript() {
             showStatus('Loading questions from Google Sheets...', 'loading');
 
             try {
-                const response = await fetch(GOOGLE_APPS_SCRIPT_URL);
+                // Add no-cors mode and better error handling
+                const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
                 if (!response.ok) {
-                    throw new Error('Failed to load questions. Check your Google Apps Script URL.');
+                    throw new Error(`HTTP ${response.status}: Make sure your Google Apps Script is deployed as a web app with "Anyone" access.`);
                 }
                 
                 const questions = await response.json();
@@ -172,8 +260,52 @@
                 
             } catch (error) {
                 console.error('Error loading questions:', error);
-                showStatus(`Error: ${error.message}`, 'error');
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    showStatus('Connection failed. Please check: 1) Your Google Apps Script URL is correct, 2) Script is deployed as web app with "Anyone" access, 3) CORS is enabled in your script', 'error');
+                } else {
+                    showStatus(`Error: ${error.message}`, 'error');
+                }
+                
+                // Load sample data as fallback
+                loadSampleQuestions();
             }
+        }
+
+        // Load sample questions as fallback
+        function loadSampleQuestions() {
+            const sampleQuizData = [
+                {
+                    question: "What is the capital of France?",
+                    options: ["London", "Paris", "Berlin", "Madrid"],
+                    correct: 1
+                },
+                {
+                    question: "Which planet is known as the Red Planet?",
+                    options: ["Venus", "Mars", "Jupiter", "Saturn"],
+                    correct: 1
+                },
+                {
+                    question: "What is 2 + 2?",
+                    options: ["3", "4", "5", "6"],
+                    correct: 1
+                },
+                {
+                    question: "Who painted the Mona Lisa?",
+                    options: ["Van Gogh", "Picasso", "Da Vinci", "Monet"],
+                    correct: 2
+                },
+                {
+                    question: "What is the largest ocean on Earth?",
+                    options: ["Atlantic", "Indian", "Arctic", "Pacific"],
+                    correct: 3
+                }
+            ];
+            
+            setTimeout(() => {
+                quizData = [...sampleQuizData];
+                showQuestionsLoaded(sampleQuizData.length);
+                showStatus('Using sample questions (Google Sheets connection failed)', 'success');
+            }, 1000);
         }
 
 
@@ -269,41 +401,143 @@
             questionNumber.textContent = currentQuestionIndex + 1;
             questionText.textContent = question.question;
             
-            answersContainer.innerHTML = '';
             selectedAnswer = null;
+            answerSubmitted = false;
             nextBtn.disabled = true;
+            answerFeedback.classList.add('hidden');
             
-            question.options.forEach((option, index) => {
-                const button = document.createElement('button');
-                button.className = 'w-full text-left p-4 rounded-lg border-2 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition duration-300';
-                button.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
-                button.onclick = () => selectAnswer(index, button);
-                answersContainer.appendChild(button);
-            });
+            if (currentQuizMode === 'multiple-choice') {
+                // Show multiple choice options
+                answersContainer.classList.remove('hidden');
+                identificationInput.classList.add('hidden');
+                instructionText.textContent = 'Select an answer to continue';
+                
+                answersContainer.innerHTML = '';
+                question.options.forEach((option, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'w-full text-left p-4 rounded-lg border-2 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition duration-300';
+                    button.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+                    button.onclick = () => selectAnswer(index, button);
+                    answersContainer.appendChild(button);
+                });
+            } else {
+                // Show identification input
+                answersContainer.classList.add('hidden');
+                identificationInput.classList.remove('hidden');
+                instructionText.textContent = 'Type your answer and click submit';
+                
+                answerInput.value = '';
+                answerInput.focus();
+                submitAnswer.disabled = false;
+            }
         }
 
-        // Select answer
+        // Select answer (Multiple Choice)
         function selectAnswer(answerIndex, buttonElement) {
+            if (answerSubmitted) return;
+            
             const buttons = answersContainer.querySelectorAll('button');
-            buttons.forEach(btn => {
-                btn.classList.remove('border-indigo-500', 'bg-indigo-100');
-                btn.classList.add('border-gray-200');
+            const question = currentQuestions[currentQuestionIndex];
+            const isCorrect = answerIndex === question.correct;
+            
+            // Disable all buttons
+            buttons.forEach(btn => btn.disabled = true);
+            
+            // Show correct/incorrect styling
+            buttons.forEach((btn, index) => {
+                if (index === question.correct) {
+                    btn.classList.add('border-green-500', 'bg-green-100');
+                } else if (index === answerIndex && !isCorrect) {
+                    btn.classList.add('border-red-500', 'bg-red-100');
+                }
             });
             
-            buttonElement.classList.remove('border-gray-200');
-            buttonElement.classList.add('border-indigo-500', 'bg-indigo-100');
-            
             selectedAnswer = answerIndex;
-            nextBtn.disabled = false;
+            answerSubmitted = true;
+            
+            // Show feedback
+            showAnswerFeedback(isCorrect, question.options[question.correct]);
+            
+            // Play sound
+            if (isCorrect) {
+                playCorrectSound();
+            } else {
+                playIncorrectSound();
+            }
+            
+            // Enable next button after a short delay
+            setTimeout(() => {
+                nextBtn.disabled = false;
+            }, 1000);
+        }
+        
+        // Submit identification answer
+        function submitIdentificationAnswer() {
+            if (answerSubmitted) return;
+            
+            const userAnswer = answerInput.value.trim();
+            if (!userAnswer) return;
+            
+            const question = currentQuestions[currentQuestionIndex];
+            const correctAnswerText = question.options[question.correct];
+            
+            // Simple comparison (case-insensitive)
+            const isCorrect = userAnswer.toLowerCase() === correctAnswerText.toLowerCase();
+            
+            selectedAnswer = isCorrect ? question.correct : -1;
+            answerSubmitted = true;
+            
+            // Disable input and button
+            answerInput.disabled = true;
+            submitAnswer.disabled = true;
+            
+            // Show feedback
+            showAnswerFeedback(isCorrect, correctAnswerText);
+            
+            // Play sound
+            if (isCorrect) {
+                playCorrectSound();
+            } else {
+                playIncorrectSound();
+            }
+            
+            // Enable next button after a short delay
+            setTimeout(() => {
+                nextBtn.disabled = false;
+            }, 1000);
+        }
+        
+        // Show answer feedback
+        function showAnswerFeedback(isCorrect, correctAnswerText) {
+            answerFeedback.classList.remove('hidden');
+            
+            if (isCorrect) {
+                answerFeedback.className = 'mt-4 p-4 rounded-lg bg-green-100 border border-green-300';
+                feedbackIcon.innerHTML = '✅';
+                feedbackText.textContent = 'Correct!';
+                feedbackText.className = 'font-semibold text-green-800';
+                correctAnswer.textContent = '';
+            } else {
+                answerFeedback.className = 'mt-4 p-4 rounded-lg bg-red-100 border border-red-300';
+                feedbackIcon.innerHTML = '❌';
+                feedbackText.textContent = 'Incorrect';
+                feedbackText.className = 'font-semibold text-red-800';
+                correctAnswer.textContent = `Correct answer: ${correctAnswerText}`;
+                correctAnswer.className = 'mt-2 text-sm text-red-700';
+            }
         }
 
         // Next question
         function nextQuestion() {
-            if (selectedAnswer === null) return;
+            if (!answerSubmitted) return;
             
             if (selectedAnswer === currentQuestions[currentQuestionIndex].correct) {
                 score++;
             }
+            
+            // Re-enable inputs for next question
+            answerInput.disabled = false;
+            submitAnswer.disabled = false;
             
             currentQuestionIndex++;
             
@@ -342,6 +576,26 @@
         startBtn.addEventListener('click', initQuiz);
         nextBtn.addEventListener('click', nextQuestion);
         restartBtn.addEventListener('click', restartQuiz);
+        submitAnswer.addEventListener('click', submitIdentificationAnswer);
+        
+        // Quiz mode change
+        document.querySelectorAll('input[name="quizMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                currentQuizMode = e.target.value;
+                if (currentQuizMode === 'multiple-choice') {
+                    modeDescription.textContent = 'Select from 4 options';
+                } else {
+                    modeDescription.textContent = 'Type the correct answer';
+                }
+            });
+        });
+        
+        // Enter key for identification
+        answerInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                submitIdentificationAnswer();
+            }
+        });
 
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
@@ -363,5 +617,5 @@
             loadQuestionsFromScript();
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'965795fc928aba08',t:'MTc1MzU3MTU4OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9657a6d923d5ba08',t:'MTc1MzU3MjI3OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
