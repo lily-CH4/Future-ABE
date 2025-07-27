@@ -2166,7 +2166,7 @@
         const allPrebuiltQuestions = [...prebuiltQuestions, ...additionalSampleQuestions];
 
         // Quiz state
- 	let quizData = [...prebuiltQuestions];
+ 	let quizData = [];
         let topics = [
             { 
                 name: 'PAES', 
@@ -2234,7 +2234,7 @@
         // Listen Mode settings
         let listenMode = {
             isActive: false,
-            currentQuestions: [...quizData],
+            currentQuestions: [],
             currentIndex: 0,
             speechRate: 1.0,
             pauseBeforeAnswer: 3.0,
@@ -3614,6 +3614,7 @@
             return result.filter(field => field !== ''); // Remove empty fields
         }
         
+
         // Load sample questions (fallback)
         function loadSampleQuestions() {
             const sampleQuizData = [
@@ -3674,7 +3675,7 @@
                 }
             });
             
-            quizData = [...quizData, ...sampleQuizData];
+            quizData = [...quizData, ...sampleQuizData, ...prebuiltQuestions];
             updateTopicsDisplay();
             updateParentTopicSelect();
             updateQuestionsList();
