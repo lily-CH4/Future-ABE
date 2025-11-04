@@ -301,6 +301,8 @@
                         <div id="listenQuestionText" class="text-xl font-semibold text-gray-800 mb-4 min-h-[3rem] flex items-center justify-center">
                             Click "Start Listening" to begin
                         </div>
+			<div id="listenOptionsContainer" class="mt-4 mb-6 space-y-2 text-left max-w-2xl mx-auto">
+    </div>
                         <div id="listenAnswerText" class="text-lg text-green-700 font-medium min-h-[2rem] flex items-center justify-center"></div>
                     </div>
                     
@@ -2406,6 +2408,7 @@
             
             listenQuestionText.textContent = 'Click "Start Listening" to begin';
             listenAnswerText.textContent = '';
+	    listenOptionsContainer.innerHTML = ''; // Clear options
             listenQuestionNumber.textContent = '0';
         }
         
@@ -2421,6 +2424,15 @@
             listenQuestionText.textContent = question.question;
             listenAnswerText.textContent = ''; // Clear answer initially
             
+	// Populate the options container
+		listenOptionsContainer.innerHTML = ''; // Clear previous options
+		question.options.forEach((option, index) => {
+ 		   const optionEl = document.createElement('div');
+ 		   optionEl.className = 'p-3 rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-700';
+		   optionEl.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+  		  listenOptionsContainer.appendChild(optionEl);
+		}); 
+
             // Speak question first
             if ('speechSynthesis' in window) {
                 stopSpeech();
@@ -2607,6 +2619,7 @@
         const pauseListenBtn = document.getElementById('pauseListenBtn');
         const stopListenBtn = document.getElementById('stopListenBtn');
         const listenQuestionText = document.getElementById('listenQuestionText');
+	const listenOptionsContainer = document.getElementById('listenOptionsContainer');
         const listenAnswerText = document.getElementById('listenAnswerText');
         const listenQuestionNumber = document.getElementById('listenQuestionNumber');
         const listenTotalQuestions = document.getElementById('listenTotalQuestions');
@@ -4613,6 +4626,7 @@
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'965cf8fee513b9ff',t:'MTc1MzYyODA3My4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
+
 
 
 
